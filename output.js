@@ -1,4 +1,4 @@
-//Wed Jul 03 2024 03:17:08 GMT+0000 (Coordinated Universal Time)
+//Thu Jul 04 2024 05:24:40 GMT+0000 (Coordinated Universal Time)
 //Base:https://github.com/echo094/decode-js
 //Modify:https://github.com/smallfawn/decode_action
 let activityContent = "",
@@ -345,6 +345,3 @@ async function sign() {
   }
   return -1;
 }
-$.run({
-  whitelist: ["1-7"]
-}).catch(reason => $.log(reason));
