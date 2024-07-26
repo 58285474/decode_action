@@ -1,727 +1,1343 @@
-//Fri Jul 19 2024 06:12:10 GMT+0000 (Coordinated Universal Time)
+//Fri Jul 26 2024 14:46:31 GMT+0000 (Coordinated Universal Time)
 //Base:https://github.com/echo094/decode-js
 //Modify:https://github.com/smallfawn/decode_action
-const jdCookie = require("./jdCookie"),
-  notify = require("./utils/Rebels_sendJDNotify"),
+const $ = new Env("夺金刮刮乐抽奖提现");
+const notify = require("./utils/Rebels_sendJDNotify"),
+  jdCookie = require("./jdCookie"),
   common = require("./utils/Rebels_jdCommon"),
   {
     H5st
   } = require("./utils/Rebels_H"),
-  fs = require("fs"),
-  CryptoJS = require("crypto-js"),
-  querystring = require("querystring"),
-  shuffleShareCodes = process.env.JD_XinFarm_mode === "true",
-  isNotify = (process.env.JD_XinFarm_notify || process.env.JD_XinFarm_Notify) === "true",
-  helparr = (process.env.JD_XinFarm_code || "").split(/[,@\n]+/g).map(_0x431a73 => _0x431a73.trim()).filter(Boolean),
-  ShareCodesCacheFile = "./XinFarm_ShareCache.json";
-let ShareCodesCacheData = [],
-  needUpdateShareCodesCache = false;
-if (fs.existsSync(ShareCodesCacheFile)) {
-  try {
-    const fileContent = fs.readFileSync(ShareCodesCacheFile, "utf-8");
-    fileContent.trim() === "" ? console.log("缓存文件为空，初始化为空数组") : (ShareCodesCacheData = JSON.parse(fileContent), !Array.isArray(ShareCodesCacheData) && (ShareCodesCacheData = []), console.log("检测到本地缓存文件 XinFarm_ShareCache.json，加载成功"));
-  } catch (_0x12da7c) {
-    console.error("解析缓存文件时出错:", _0x12da7c);
-    ShareCodesCacheData = [];
-  }
-}
-let ShareCodes = [],
-  ShareCodesMap = new Map(),
-  cookie = "",
-  cookiesArr = Object.keys(jdCookie).map(_0x2feae3 => jdCookie[_0x2feae3]).filter(_0x275a2e => _0x275a2e);
+  isNotify = process.env.jd_djggl_Notify === "true",
+  Swish = process.env.jd_djggl_swish === "true",
+  autotx = process.env.jd_djggl_autotx === "true",
+  pagination = process.env.jd_djggl_txnum || "1",
+  exchange = process.env.jd_djggl_exchange === "true",
+  draw_wait = process.env.jd_djggl_drawwait || "3",
+  DRAW_RETRY = process.env.jd_djggl_draw_retry || "20",
+  TaskList = !(process.env.jd_djggl_task === "false"),
+  linkId = "1v8ROyHv8LXPs559oaclNA";
+let apCashWithDrawList = [],
+  business = "fission",
+  waitTimes = 2000,
+  drawwaitTimes = parseInt(draw_wait) * 1000;
+$.PDDEnd = false;
+let cookie = "";
+const cookiesArr = Object.keys(jdCookie).map(_0x4056eb => jdCookie[_0x4056eb]).filter(_0x56d75a => _0x56d75a);
 !cookiesArr[0] && ($.msg($.name, "【提示】请先获取Cookie"), process.exit(1));
 !(async () => {
   console.log("==========" + $.name + "变量开启状态==========");
-  console.log("活动入口: [APP-我的-东东农场]");
-  console.log("指定助力: [" + (helparr.length > 0 ? "已填写" + helparr.length + "个指定助力码" : "未填写指定助力变量") + "]");
-  console.log("助力模式: [" + (shuffleShareCodes ? "随机打乱" : "顺序执行") + "]");
+  console.log("任务开关: [" + (TaskList ? "开启" : "关闭") + "]");
   console.log("代理开关: [" + common.getProxyStatus() + "]");
-  console.log("通知推送: [" + (isNotify ? "开启" : "关闭") + "]");
   console.log("==========" + $.name + "变量状态结束==========");
-  console.log("");
   notify.config({
     title: $.name
   });
-  console.log("【开始】收集[" + cookiesArr.length + "]个账号的助力码：\n");
-  $.needRemoveCookieIndex = [];
-  for (let _0x452942 = 0; _0x452942 < cookiesArr.length; _0x452942++) {
-    $.index = _0x452942 + 1;
-    cookie = cookiesArr[_0x452942];
+  for (let _0x2f7938 = 0; _0x2f7938 < cookiesArr.length; _0x2f7938++) {
+    $.index = _0x2f7938 + 1;
+    cookie = cookiesArr[_0x2f7938];
     common.setCookie(cookie);
     $.UserName = decodeURIComponent(common.getCookieValue(cookie, "pt_pin"));
     $.UA = common.genUA($.UserName);
     $.message = notify.create($.index, $.UserName);
     $.nickName = "";
-    $.retryTimes = 0;
-    $.title = "【账号" + $.index + "】" + $.UserName + "：";
-    await getShareCodes();
+    console.log("\n******开始【京东账号" + $.index + "】" + ($.nickName || $.UserName) + "******\n");
+    await Main();
     common.unsetCookie();
     if ($.runEnd) {
       break;
     }
+    await $.wait(parseInt(2100, 10));
   }
-  if (needUpdateShareCodesCache) {
-    let _0x575a4e = JSON.stringify(ShareCodesCacheData, null, 2);
-    fs.writeFile(ShareCodesCacheFile, _0x575a4e, function (_0x29fd31) {
-      _0x29fd31 ? (console.log(_0x29fd31), console.log("\n【缓存文件 XinFarm_ShareCache.json 更新失败!】\n")) : console.log("\n【缓存文件 XinFarm_ShareCache.json 更新成功!】\n");
-    });
-  }
-  $.needRemoveCookieIndex.length > 0 && (console.log("\n【检测】删除火爆或者无效账号序号: [" + $.needRemoveCookieIndex.join(", ") + "]"), cookiesArr = cookiesArr.filter((_0x4af253, _0x1ea43b) => !$.needRemoveCookieIndex.includes(_0x1ea43b + 1)), $.needRemoveCookieIndex = []);
-  console.log("\n【查询】本次可助力账号共有[" + cookiesArr.length + "]个");
-  if (helparr && helparr.length > 0) {
-    let _0x382f47;
-    if (shuffleShareCodes) {
-      const _0x2e4fe1 = ShareCodes.sort(() => 0.5 - Math.random());
-      _0x382f47 = [...helparr, ..._0x2e4fe1];
-    } else {
-      _0x382f47 = [...helparr, ...ShareCodes];
-    }
-    const _0x29bf43 = [...new Set(_0x382f47)];
-    ShareCodes = _0x29bf43;
-    console.log("【模式】[" + (shuffleShareCodes ? "随机打乱" : "顺序执行") + "]，已指定[" + helparr.length + "]个助力码，共计[" + ShareCodes.length + "]个助力码\n");
-    for (let _0xc9711e = 0; _0xc9711e < cookiesArr.length; _0xc9711e++) {
-      $.index = _0xc9711e + 1;
-      cookie = cookiesArr[_0xc9711e];
-      common.setCookie(cookie);
-      $.UserName = decodeURIComponent(common.getCookieValue(cookie, "pt_pin"));
-      $.UA = common.genUA($.UserName);
-      $.message = notify.create($.index, $.UserName);
-      $.nickName = "";
-      $.title = "【账号" + $.index + "】" + $.UserName + "：";
-      await Main();
-      common.unsetCookie();
-      if ($.runEnd) {
-        break;
-      }
-      await $.wait(3000);
-    }
-  } else {
-    let _0x339cef;
-    if (shuffleShareCodes) {
-      const _0x2aa64a = ShareCodes.sort(() => 0.5 - Math.random());
-      _0x339cef = _0x2aa64a;
-    } else {
-      _0x339cef = ShareCodes;
-    }
-    const _0x1c29a9 = [...new Set(_0x339cef)];
-    ShareCodes = _0x1c29a9;
-    console.log("【模式】[" + (shuffleShareCodes ? "随机打乱" : "顺序执行") + "]，共计[" + ShareCodes.length + "]个助力码\n");
-    for (let _0x547ee4 = 0; _0x547ee4 < cookiesArr.length; _0x547ee4++) {
-      $.index = _0x547ee4 + 1;
-      cookie = cookiesArr[_0x547ee4];
-      common.setCookie(cookie);
-      $.UserName = decodeURIComponent(common.getCookieValue(cookie, "pt_pin"));
-      $.UA = common.genUA($.UserName);
-      $.message = notify.create($.index, $.UserName);
-      $.nickName = "";
-      $.title = "【账号" + $.index + "】" + $.UserName + "：";
-      await Main();
-      common.unsetCookie();
-      if ($.runEnd) {
-        break;
-      }
-      await $.wait(3000);
-    }
-  }
-  const _0x22c7aa = notify.getMessage();
-  _0x22c7aa && (console.log("\n📣 运行结果\n" + _0x22c7aa.replace(/：/g, " ➜ ")), isNotify && (notify.appendContent("\n"), await notify.push()));
-})().catch(_0x4c549d => $.logErr(_0x4c549d)).finally(() => $.done());
-async function getShareCodes() {
-  try {
-    const _0x1baa27 = await common.getLoginStatus(cookie);
-    if (!_0x1baa27 && typeof _0x1baa27 === "boolean") {
-      console.log($.title + "账号无效");
-      $.needRemoveCookieIndex.push($.index);
-      return;
-    }
-    let _0x5cc280 = false,
-      _0x4c5397 = "";
-    if (ShareCodesCacheData) {
-      for (let _0xe0fce = 0; _0xe0fce < ShareCodesCacheData.length; _0xe0fce++) {
-        ShareCodesCacheData[_0xe0fce].pt_pin == $.UserName && (_0x5cc280 = true, _0x4c5397 = ShareCodesCacheData[_0xe0fce].ShareCode);
-      }
-    }
-    !_0x5cc280 && ($.farm_home = "", await sendRequest("farm_home"), $.farm_home?.["result"]?.["farmHomeShare"]?.["inviteCode"] && (_0x4c5397 = $.farm_home?.["result"]?.["farmHomeShare"]?.["inviteCode"], ShareCodesCacheData.push({
-      pt_pin: $.UserName,
-      ShareCode: _0x4c5397
-    }), needUpdateShareCodesCache = true), await $.wait(2000));
-    _0x4c5397 ? (console.log($.title + "助力码[" + _0x4c5397 + "]"), ShareCodesMap.set($.UserName, _0x4c5397), ShareCodes.push(_0x4c5397)) : (console.log($.title + "❌ 获取助力码失败"), $.needRemoveCookieIndex.push($.index));
-  } catch (_0x4c1924) {
-    console.log("❌ 脚本运行遇到了错误\n" + _0x4c1924);
-  }
-}
+  isNotify && notify.getMessage() && (notify.appendContent("\n"), await notify.push());
+})().catch(_0x5b90a5 => $.logErr(_0x5b90a5)).finally(() => $.done());
 async function Main() {
+  apCashWithDrawList = [];
+  $.retryend = false;
+  $.txhot = false;
+  $.inviteFissionReceivehot = false;
+  $.stateEnd = false;
+  $.NoLogin = false;
+  $.cashVoRS = false;
+  $.hbnums = 0;
+  $.xjnums = 0;
+  $.drawnum = 0;
+  $.retry = 0;
+  const _0x777b93 = await common.getLoginStatus(cookie);
+  if (!_0x777b93 && typeof _0x777b93 === "boolean") {
+    console.log("账号无效");
+    return;
+  }
   try {
-    const _0x1d561f = await common.getLoginStatus(cookie);
-    if (!_0x1d561f && typeof _0x1d561f === "boolean") {
-      console.log($.title + "账号无效");
+    await sendRequest("inviteFissionBeforeHome");
+    if ($.NoLogin) {
       return;
     }
-    $.skipRun = false;
-    const _0x3272a7 = [];
-    let _0x570fb5 = 0;
-    const _0x1812ba = 1;
-    _0x3c01f4: for (let _0x5c7dda of ShareCodes) {
-      $.code = _0x5c7dda;
-      await sendRequest("farm_assist");
-      const _0x299753 = $.farm_assist?.["result"]?.["masterInfo"]?.["nickname"];
-      switch ($.farm_assist?.["bizCode"]) {
-        case 0:
-          console.log($.title + "助力[" + _0x299753 + "](" + _0x5c7dda + ")成功 ✅(" + $.farm_assist?.["result"]?.["amount"] + "g💧)");
-          break;
-        case -4001:
-          console.log($.title + "助力[" + _0x299753 + "](" + _0x5c7dda + ")失败(" + $.farm_assist?.["bizMsg"] + ")，重试1次");
-          await $.wait(3000);
-          await sendRequest("farm_assist");
-          break;
-        case -1001:
-          console.log($.title + "助力(" + _0x5c7dda + ")失败(" + $.farm_assist?.["bizMsg"] + ")，重试");
-          await $.wait(3000);
-          await sendRequest("farm_assist");
-          _0x570fb5++;
-          if (_0x570fb5 > _0x1812ba) {
-            break _0x3c01f4;
+    await $.wait(parseInt(1500, 10));
+    await sendRequest("inviteFissionHome");
+    if ($.NoLogin) {
+      return;
+    }
+    await $.wait(parseInt(1500, 10));
+    if (!$.NoLogin) {
+      if (TaskList) {
+        $.apTaskList = "";
+        await sendRequest("apTaskList");
+        let _0x305208 = $.apTaskList || [];
+        for (let _0x283ae0 = 0; _0x283ae0 < _0x305208.length; _0x283ae0++) {
+          $.taskTitle = _0x305208[_0x283ae0].taskTitle;
+          $.apTaskListid = _0x305208[_0x283ae0].id;
+          $.taskType = _0x305208[_0x283ae0].taskType;
+          $.taskSourceUrl = _0x305208[_0x283ae0].taskSourceUrl;
+          $.taskDoTimes = _0x305208[_0x283ae0].taskDoTimes;
+          $.taskLimitTimes = _0x305208[_0x283ae0].taskLimitTimes;
+          $.taskFinished = _0x305208[_0x283ae0].taskFinished;
+          $.taskShowTitle = _0x305208[_0x283ae0].taskShowTitle;
+          $.configBaseList = _0x305208[_0x283ae0].configBaseList[0].awardTitle;
+          if (!$.taskFinished && $.taskType.includes("BROWSE_")) {
+            if ($.taskSourceUrl) {
+              for (let _0x8dac22 = $.taskDoTimes; _0x8dac22 < $.taskLimitTimes; _0x8dac22++) {
+                Assignment = true;
+                console.log("去做 \"" + $.taskShowTitle + "\" 任务");
+                await sendRequest("apsDoTask");
+                await $.wait(parseInt($.waitTime * 1 + 500, 10));
+                await sendRequest("apTaskDrawAward");
+                await $.wait(parseInt(Math.random() * 1500 + 500, 10));
+              }
+            } else {
+              if ($.configBaseList && $.configBaseList.includes("s")) {
+                for (let _0x3a9e2d = 0; _0x3a9e2d < 1; _0x3a9e2d++) {
+                  console.log("去做 \"" + $.taskShowTitle + "\" 任务");
+                  $.apTaskDetail = "";
+                  await sendRequest("apTaskDetail");
+                  const _0x9a93a3 = $.apTaskDetail?.["taskItemList"] || [],
+                    _0x4b5e4 = $.apTaskDetail?.["status"]?.["finishNeed"];
+                  for (let _0x399ec2 = 0; _0x399ec2 < _0x4b5e4; _0x399ec2++) {
+                    const _0x299ae0 = _0x9a93a3[_0x399ec2];
+                    _0x299ae0 ? ($.taskSourceUrl = _0x299ae0.itemId, $.taskInsert = _0x299ae0.taskInsert, await sendRequest("apStartTaskTime"), await $.wait(parseInt(Math.random() * 1500 + 6000, 10)), await sendRequest("apDoLimitTimeTask"), await $.wait(parseInt(Math.random() * 1500 + 500, 10)), await sendRequest("apTaskDrawAward"), await $.wait(parseInt(Math.random() * 1500 + 500, 10))) : console.log("任务失败，没有获取到任务ID");
+                  }
+                }
+              } else {
+                $.finished = false;
+                while (!$.finished) {
+                  Assignment = true;
+                  console.log("去做 \"" + $.taskShowTitle + "\" 任务");
+                  await sendRequest("apTaskDetail");
+                  $.finished = $.apTaskDetail?.["status"]?.["finished"] || false;
+                  if ($.finished) {
+                    break;
+                  }
+                  await $.wait(parseInt($.waitTime * 1 + 500, 10));
+                  const _0x4d2d1e = $.apTaskDetail?.["taskItemList"] || [],
+                    _0x5993d2 = _0x4d2d1e[0];
+                  _0x5993d2 ? ($.taskSourceUrl = _0x5993d2.itemId, $.taskInsert = _0x5993d2.taskInsert, await sendRequest("apsDoTask"), await $.wait(parseInt($.waitTime * 1 + 500, 10)), await sendRequest("apTaskDrawAward"), await $.wait(parseInt(Math.random() * 1500 + 500, 10))) : console.log("任务失败，没有获取到任务ID");
+                }
+              }
+            }
+          } else {
+            if (!$.taskFinished && $.taskType.includes("FOLLOW_")) {
+              if ($.taskSourceUrl) {
+                for (let _0xdbad2f = $.taskDoTimes; _0xdbad2f < $.taskLimitTimes; _0xdbad2f++) {
+                  Assignment = true;
+                  console.log("去做 \"" + $.taskShowTitle + "\" 任务");
+                  await sendRequest("apsDoTask");
+                  await $.wait(parseInt($.waitTime * 1 + 500, 10));
+                  await sendRequest("apTaskDrawAward");
+                  await $.wait(parseInt(Math.random() * 1500 + 500, 10));
+                }
+              } else {
+                $.finished = false;
+                while (!$.finished) {
+                  Assignment = true;
+                  console.log("去做 \"" + $.taskShowTitle + "\" 任务");
+                  await sendRequest("apTaskDetail");
+                  $.finished = $.apTaskDetail?.["status"]?.["finished"] || false;
+                  if ($.finished) {
+                    break;
+                  }
+                  await $.wait(parseInt($.waitTime * 1 + 500, 10));
+                  const _0x4d9212 = $.apTaskDetail?.["taskItemList"] || [],
+                    _0x7c51b1 = _0x4d9212[0];
+                  _0x7c51b1 ? ($.taskSourceUrl = _0x7c51b1.itemId, $.taskInsert = _0x7c51b1.taskInsert, await sendRequest("apsDoTask"), await $.wait(parseInt($.waitTime * 1 + 500, 10)), await sendRequest("apTaskDrawAward"), await $.wait(parseInt(Math.random() * 1500 + 500, 10))) : console.log("任务失败，没有获取到任务ID");
+                }
+              }
+            } else {
+              if (!$.taskFinished && $.taskType.includes("SIGN")) {
+                for (let _0x145952 = $.taskDoTimes; _0x145952 < $.taskLimitTimes; _0x145952++) {
+                  Assignment = true;
+                  await sendRequest("apsDoTask");
+                  await $.wait(parseInt(Math.random() * 1500 + 500, 10));
+                  await sendRequest("apTaskDrawAward");
+                  await $.wait(parseInt(Math.random() * 1500 + 500, 10));
+                }
+              }
+            }
           }
-          break;
-        case 5002:
-          console.log($.title + "助力失败(不能助力自己)");
-          break;
-        case 5003:
-          console.log($.title + "助力[" + _0x299753 + "](" + _0x5c7dda + ")失败(今日已给该好友助力过了)");
-          break;
-        case 5004:
-          console.log($.title + "助力[" + _0x299753 + "](" + _0x5c7dda + ")失败(今日助力次数已耗尽)");
-          break _0x3c01f4;
-        case 5005:
-          console.log($.title + "助力[" + _0x299753 + "](" + _0x5c7dda + ")失败(好友助力已满)");
-          $.message.insert("(" + _0x5c7dda + ")助力已满");
-          _0x3272a7.push(_0x5c7dda);
-          break;
-        default:
-          {
-            console.log($.title + "助力[" + _0x299753 + "](" + _0x5c7dda + ")失败(未知助力结果：" + $.farm_assist?.["bizCode"] + " - " + $.farm_assist?.["bizMsg"] + ")");
+        }
+      }
+      if ($.prizeNum > 0) {
+        for (m = 1; $.prizeNum--; m++) {
+          console.log("进行第" + m + "次抽奖");
+          await sendRequest("inviteFissionDrawPrize");
+          await $.wait(parseInt(2100, 10));
+          $.cashVoRS && !$.stateEnd && !$.inviteFissionReceivehot && (await sendRequest("inviteFissionReceive"), await $.wait(parseInt(drawwaitTimes * 1 + 2000, 10)));
+          if (m >= 1199) {
+            console.log("抽奖太多次，多余的次数请再执行脚本");
             break;
           }
+          if ($.retryend) {
+            break;
+          }
+        }
       }
-      if ($.skipRun) {
-        break;
+      if (autotx) {
+        console.log("\n当前设置轮询提现页数：[" + pagination + "](建议开启代理)");
+        for (let _0x510c76 = 0; _0x510c76 < pagination; _0x510c76++) {
+          $.pageNum = _0x510c76 + 1;
+          console.log("\n开始轮询提现 [" + $.pageNum + "] 页");
+          await goWithdrawal();
+          if ($.txhot) {
+            break;
+          }
+          await $.wait(parseInt(waitTimes * 1 + 5000, 10));
+        }
+      } else {
+        await goWithdrawals();
       }
-      await $.wait(2000);
     }
-    if (_0x3272a7.length > 0) {
-      for (let _0x5404e6 of _0x3272a7) {
-        ShareCodes.includes(_0x5404e6) && ShareCodes.splice(ShareCodes.indexOf(_0x5404e6), 1);
-      }
-      console.log("\n【统计】当前还剩[" + ShareCodes.length + "]个助力码\n");
-    }
-  } catch (_0x444f6c) {
-    console.log("❌ 脚本运行遇到了错误\n" + _0x444f6c);
+  } catch (_0x253289) {
+    console.log("❌ 脚本运行遇到了错误\n" + _0x253289);
   }
 }
-async function handleResponse(_0x3f1926, _0xf2727a) {
+async function goWithdrawals() {
+  if (apCashWithDrawList.length > 0) {
+    console.log("\n开始提现上方现金(共" + apCashWithDrawList.length + "次提现)");
+  }
+  for (i = 0; i < apCashWithDrawList.length; i++) {
+    const _0xd0e450 = apCashWithDrawList[i];
+    console.log("去提现" + _0xd0e450?.["amount"] + "💰 [" + _0xd0e450.id + "]");
+    $.apCashWithDrawBaseParams = {
+      prizeType: 4,
+      business: business,
+      id: _0xd0e450.id,
+      poolBaseId: _0xd0e450.poolBaseId,
+      prizeGroupId: _0xd0e450.prizeGroupId,
+      prizeBaseId: _0xd0e450.prizeBaseId
+    };
+    $.apCashWithDraw = "";
+    await sendRequest("apCashWithDraw");
+    if ($.apCashWithDraw) {
+      const _0x2b9073 = $.apCashWithDraw.status,
+        _0x26fec3 = $.apCashWithDraw.message;
+      if (_0x2b9073 === "310") {
+        console.log("✅ 提现成功");
+      } else {
+        let _0x470ef0 = false,
+          _0x329ddc = 0;
+        const _0x48b189 = 3;
+        if (_0x26fec3.includes("上限")) {
+          console.log("❌ 提现失败：当月提现额度已满");
+          exchange ? ($.apRecompenseDrawPrizeBaseParams = {
+            linkId: linkId,
+            business: business,
+            drawRecordId: _0xd0e450.id,
+            poolId: _0xd0e450.poolBaseId,
+            prizeGroupId: _0xd0e450.prizeGroupId,
+            prizeId: _0xd0e450.prizeBaseId
+          }, await sendRequest("apRecompenseDrawPrize")) : !Swish && ($.txhot = true);
+        } else {
+          if (_0x26fec3.includes("已存在状态")) {
+            console.log("❌ 提现失败：上一笔提现还未完成");
+            _0x470ef0 = true;
+          } else {
+            if (_0x26fec3.includes("其它pin的订单")) {
+              console.log("❌ 提现失败：其它pin的订单");
+              if (!Swish) {
+                break;
+              }
+            } else {
+              if (_0x26fec3.includes("未绑定微信") || _0x26fec3.includes("绑定手机号")) {
+                console.log("❌ 提现失败：未绑定微信或手机号");
+                if (!Swish) {
+                  break;
+                }
+              } else {
+                console.log("❌ 提现失败：" + _0x26fec3);
+                _0x470ef0 = true;
+              }
+            }
+          }
+        }
+        while (_0x470ef0 && _0x329ddc < _0x48b189) {
+          await $.wait(70000);
+          await sendRequest("apCashWithDraw");
+          const _0x13fd08 = $.apCashWithDraw.status,
+            _0x4d51e0 = $.apCashWithDraw.message;
+          if (_0x13fd08 === "310") {
+            console.log("✅ 提现成功");
+            _0x470ef0 = false;
+          } else {
+            _0x4d51e0.includes("已存在状态") ? _0x329ddc++ : (console.log("❌ 重试提现失败：上一笔提现还未完成"), _0x470ef0 = false);
+          }
+        }
+      }
+      i !== apCashWithDrawList.length - 1 && (await $.wait(parseInt(Math.random() * 2000 + 5000, 10)));
+    }
+  }
+}
+async function goWithdrawal() {
+  $.superRedBagList = "";
+  await sendRequest("superRedBagList");
+  if ($.superRedBagList) {
+    const _0x435389 = ($.superRedBagList.items || []).filter(_0x2fc6bf => _0x2fc6bf.prizeType === 4 && _0x2fc6bf.state === 0 || _0x2fc6bf.state === 2);
+    if (_0x435389.length > 0) {
+      console.log("");
+    }
+    for (i = 0; i < _0x435389.length; i++) {
+      const _0x31b454 = _0x435389[i];
+      console.log("去提现" + _0x31b454?.["amount"] + "💰 [" + _0x31b454.id + "]");
+      $.apCashWithDrawBaseParams = {
+        prizeType: 4,
+        business: business,
+        id: _0x31b454.id,
+        poolBaseId: _0x31b454.poolBaseId,
+        prizeGroupId: _0x31b454.prizeGroupId,
+        prizeBaseId: _0x31b454.prizeBaseId
+      };
+      $.apCashWithDraw = "";
+      await sendRequest("apCashWithDraw");
+      if ($.apCashWithDraw) {
+        const _0x3522cc = $.apCashWithDraw.status,
+          _0x4129b0 = $.apCashWithDraw.message;
+        if (_0x3522cc === "310") {
+          console.log("✅ 提现成功");
+        } else {
+          let _0x2e9d31 = false,
+            _0x5b4937 = 0;
+          const _0x26389d = 3;
+          if (_0x4129b0.includes("上限")) {
+            console.log("❌ 提现失败：当月提现额度已满");
+            exchange ? ($.apRecompenseDrawPrizeBaseParams = {
+              linkId: linkId,
+              business: business,
+              drawRecordId: _0x31b454.id,
+              poolId: _0x31b454.poolBaseId,
+              prizeGroupId: _0x31b454.prizeGroupId,
+              prizeId: _0x31b454.prizeBaseId
+            }, await sendRequest("apRecompenseDrawPrize")) : !Swish && ($.txhot = true);
+          } else {
+            if (_0x4129b0.includes("已存在状态")) {
+              console.log("❌ 提现失败：上一笔提现还未完成");
+              _0x2e9d31 = true;
+            } else {
+              if (_0x4129b0.includes("其它pin的订单")) {
+                console.log("❌ 提现失败：其它pin的订单");
+                if (!Swish) {
+                  break;
+                }
+              } else {
+                if (_0x4129b0.includes("未绑定微信") || _0x4129b0.includes("绑定手机号")) {
+                  console.log("❌ 提现失败：未绑定微信或手机号");
+                  if (!Swish) {
+                    break;
+                  }
+                } else {
+                  console.log("❌ 提现失败：" + _0x4129b0);
+                  if (!Swish) {
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          while (_0x2e9d31 && _0x5b4937 < _0x26389d) {
+            await $.wait(50000);
+            await sendRequest("apCashWithDraw");
+            const _0x318e0c = $.apCashWithDraw.status,
+              _0x52bb06 = $.apCashWithDraw.message;
+            if (_0x318e0c === "310") {
+              console.log("✅ 提现成功");
+              _0x2e9d31 = false;
+            } else {
+              _0x52bb06.includes("已存在状态") ? _0x5b4937++ : (console.log("❌ 重试提现失败：上一笔提现还未完成"), _0x2e9d31 = false);
+            }
+          }
+        }
+        i !== _0x435389.length - 1 && (await $.wait(parseInt(Math.random() * 2000 + 5000, 10)));
+      }
+    }
+  } else {
+    $.retry < 2 && ($.retry++, console.log("等待5秒后重试，第" + $.retry + "次"), await $.wait(5000), await goWithdrawal());
+  }
+}
+async function handleResponse(_0x3078eb, _0x25ca99) {
   try {
-    let _0xd96ac0 = "";
-    switch (_0x3f1926) {
-      case "farm_home":
-        _0xf2727a.code == 0 ? _0xf2727a.data?.["bizCode"] === 0 ? $.farm_home = _0xf2727a.data : (_0xd96ac0 = common.getErrorMsg(_0xf2727a.data), console.log($.title + "农场首页失败：" + _0xd96ac0)) : (_0xd96ac0 = common.getErrorMsg(_0xf2727a), console.log($.title + "农场首页失败：" + _0xd96ac0));
+    switch (_0x3078eb) {
+      case "inviteFissionBeforeHome":
+        if (_0x25ca99?.["code"] === 0 && _0x25ca99?.["success"] === true) {
+          $.inviteFissionBeforeHome = _0x25ca99.data;
+        } else {
+          if (_0x25ca99.data?.["bizMsg"]) {
+            console.log("⏺️ " + _0x25ca99.data?.["bizMsg"] + "}");
+          } else {
+            if (_0x25ca99.code == 1000 && _0x25ca99.errMsg == "未登录") {
+              $.NoLogin = true;
+              console.log("⏺️ " + _0x25ca99.errMsg);
+            } else {
+              _0x25ca99.msg ? console.log("⏺️ " + _0x25ca99.msg) : console.log("❓" + _0x3078eb + " " + JSON.stringify(_0x25ca99));
+            }
+          }
+        }
         break;
-      case "farm_assist":
-        _0xf2727a.code === 0 ? $.farm_assist = _0xf2727a.data : (_0xd96ac0 = common.getErrorMsg(_0xf2727a), console.log($.title + "助力失败：" + _0xd96ac0), ["登陆", "失败"].some(_0x56a7c5 => _0xd96ac0.includes(_0x56a7c5)) && ($.skipRun = true));
+      case "inviteFissionHome":
+        if (_0x25ca99?.["code"] === 0 && _0x25ca99?.["success"] === true) {
+          $.inviteFissionHome = _0x25ca99?.["data"] || [];
+          $.drawPrizeNum = $.inviteFissionHome?.["drawPrizeNum"] || 0;
+          $.prizeNum = $.inviteFissionHome?.["prizeNum"] || 0;
+          let _0x19da1f = $.inviteFissionHome?.["inviter"] || "";
+          const _0x476732 = new Date().valueOf(),
+            _0x15ce01 = $.inviteFissionHome?.["countDownTime"] + _0x476732,
+            _0x5bb0d7 = $.time("yyyy-MM-dd HH:mm:ss", _0x15ce01);
+          $.cashVo = $.inviteFissionHome?.["cashVo"] || "";
+          if ($.cashVo) {
+            $.cashVoRS = true;
+            $.txjstate = $.inviteFissionHome?.["cashVo"]?.["state"] || 0;
+            console.log("限时提现金：\n已有 " + $.cashVo?.["amount"] + " 提现金，仅差 " + $.cashVo?.["leftAmount"] + " 提现金可提现 " + $.cashVo?.["totalAmount"] + " 元,进度值：" + $.cashVo?.["rate"] + " %\n");
+            switch ($.txjstate) {
+              case 0:
+              case 1:
+              case 2:
+                break;
+              case 3:
+                console.log("已成功获得限时提现金 " + $.cashVo?.["totalAmount"] + " 元，时间：" + $.cashVo?.["rewardRecord"]?.["createTime"] + "\n");
+                $.stateEnd = true;
+                break;
+              default:
+                console.log("❌ 未知类型：（" + $.txjstate + "）暂不受本脚本支持，请联系作者进行反馈！");
+            }
+          }
+          console.log("到期时间：" + _0x5bb0d7 + "\n助力码：" + _0x19da1f + "\n已抽奖次数：" + $.drawPrizeNum + "\n剩余抽奖次数：" + $.prizeNum);
+        } else {
+          if (_0x25ca99.data?.["bizMsg"]) {
+            console.log("⏺️ " + _0x25ca99.data?.["bizMsg"]);
+          } else {
+            if (_0x25ca99.code == 1000 && _0x25ca99.errMsg == "未登录") {
+              $.NoLogin = true;
+              console.log("⏺️ " + _0x25ca99.errMsg);
+            } else {
+              _0x25ca99.msg ? console.log("⏺️ " + _0x25ca99.msg) : console.log("❓" + _0x3078eb + " " + JSON.stringify(_0x25ca99));
+            }
+          }
+        }
+        break;
+      case "inviteFissionReceive":
+        if (_0x25ca99?.["code"] === 0 && _0x25ca99?.["success"] === true) {
+          $.inviteFissionReceive = _0x25ca99?.["data"] || [];
+          console.log("抽中提现金：" + ($.inviteFissionReceive?.["receiveList"][0]?.["amount"] || "未获得提现金") + " ,还需 " + $.inviteFissionReceive?.["leftAmount"] + " 提现金,进度值：" + $.inviteFissionReceive?.["rate"] + " %");
+          $.inviteFissionReceive?.["state"] == 3 && console.log("已成功获得 " + $.inviteFissionReceive?.["amount"] + " 元提现金，快去提现吧！");
+        } else {
+          if (_0x25ca99.code == 80209 && _0x25ca99.errMsg == "活动太火爆，请稍候重试") {
+            console.log("当期额外提现任务已完成，跳过");
+            $.inviteFissionReceivehot = true;
+          } else {
+            _0x25ca99.code == 80208 && _0x25ca99.errMsg == "活动太火爆，请稍候重试" ? console.log("未抽中提现金") : console.log(_0x25ca99.errMsg);
+          }
+        }
+        break;
+      case "inviteFissionDrawPrize":
+        if (_0x25ca99?.["code"] === 0 && _0x25ca99?.["success"] === true) {
+          $.drawnum = 0;
+          $.inviteFissionDrawPrize = _0x25ca99.data;
+          $.prizeType = $.inviteFissionDrawPrize?.["prizeType"];
+          let _0x29d491, _0x3cf11b;
+          switch ($.prizeType) {
+            case 0:
+              console.log("抽中未知  🎁");
+              break;
+            case 1:
+              _0x29d491 = Number($.inviteFissionDrawPrize.amount);
+              _0x3cf11b = $.inviteFissionDrawPrize.limitStr === null ? $.inviteFissionDrawPrize.prizeConfigName : $.inviteFissionDrawPrize.limitStr;
+              console.log("抽中：" + _0x3cf11b + "(-" + _0x29d491.toFixed(2) + "优惠券 🎟️)");
+              break;
+            case 2:
+              $.hbprizeValue = $.inviteFissionDrawPrize?.["prizeValue"] || 0;
+              $.hbnum = ($.hbprizeValue * 100 + $.hbnums * 100) / 100;
+              $.hbnums = toDecimal($.hbnum);
+              console.log("抽中红包：" + $.hbprizeValue + " 🧧 总现金：" + $.xjnums + " 💰|总红包：" + $.hbnums + " 🧧");
+              break;
+            case 3:
+              console.log("抽中京豆：" + $.inviteFissionDrawPrize.amount + "京豆 🐶");
+              break;
+            case 4:
+              $.xjprizeValue = $.inviteFissionDrawPrize?.["prizeValue"] || 0;
+              $.xjnum = ($.xjprizeValue * 100 + $.xjnums * 100) / 100;
+              $.xjnums = toDecimal($.xjnum);
+              console.log("抽中现金：" + $.xjprizeValue + " 💰 总现金：" + $.xjnums + " 💰|总红包：" + $.hbnums + " 🧧");
+              apCashWithDrawList.push({
+                id: $.inviteFissionDrawPrize.id,
+                prizeDesc: $.inviteFissionDrawPrize.prizeDesc,
+                amount: $.inviteFissionDrawPrize.amount,
+                prizeBaseId: $.inviteFissionDrawPrize.prizeBaseId,
+                poolBaseId: $.inviteFissionDrawPrize.poolBaseId,
+                prizeGroupId: $.inviteFissionDrawPrize.prizeGroupId,
+                prizeType: $.inviteFissionDrawPrize.prizeType
+              });
+              break;
+            case 6:
+              console.log("抽中惊喜大礼包  🗑️");
+              break;
+            case 22:
+              console.log("抽中超市卡：" + $.inviteFissionDrawPrize.amount + "超市卡 🧧");
+              break;
+            case 26:
+              console.log("抽中：" + $.inviteFissionDrawPrize.prizeDesc + " 🗑️");
+              break;
+            default:
+              console.log("❌ 未知类型：（" + $.prizeType + "）" + $.inviteFissionDrawPrize.prizeDesc);
+              break;
+          }
+        } else {
+          if (_0x25ca99.data?.["bizMsg"]) {
+            console.log("⏺️ " + _0x25ca99.data?.["bizMsg"] + "}");
+          } else {
+            if (_0x25ca99.code == 1000 && _0x25ca99.errMsg == "未登录") {
+              $.NoLogin = true;
+              console.log("⏺️ " + _0x25ca99.errMsg);
+            } else {
+              if (_0x25ca99.errMsg) {
+                if (_0x25ca99.errMsg.includes("火爆")) {
+                  if ($.drawnum < DRAW_RETRY) {
+                    $.drawnum++;
+                    console.log("⏺️ 未中奖 [" + $.drawnum + "]");
+                  }
+                }
+              } else {
+                console.log("❓" + _0x3078eb + " " + JSON.stringify(_0x25ca99));
+              }
+            }
+          }
+        }
+        break;
+      case "superRedBagList":
+        if (_0x25ca99?.["code"] === 0 && _0x25ca99?.["success"] === true) {
+          $.superRedBagList = _0x25ca99.data;
+        } else {
+          if (_0x25ca99?.["code"] === "605") {
+            console.log("> 滑块验证,请尝试手动验证一次或者更换IP");
+            $.txhot = true;
+          } else {
+            if (_0x25ca99.errMsg) {
+              console.log("> 失败：" + _0x25ca99.errMsg);
+            } else {
+              _0x25ca99.msg ? console.log("> " + _0x25ca99.msg) : console.log("❓" + _0x3078eb + " " + JSON.stringify(_0x25ca99));
+            }
+          }
+        }
+        break;
+      case "apCashWithDraw":
+        if (_0x25ca99?.["code"] === 0 && _0x25ca99?.["success"] === true) {
+          $.apCashWithDraw = _0x25ca99.data;
+        } else {
+          if (_0x25ca99?.["code"] === "605") {
+            console.log("> 滑块验证,请尝试手动验证一次或者更换IP");
+            $.txhot = true;
+          } else {
+            if (_0x25ca99.errMsg) {
+              console.log("> 失败：" + _0x25ca99.errMsg);
+            } else {
+              _0x25ca99.msg ? console.log("> " + _0x25ca99.msg) : console.log("❓" + _0x3078eb + " " + JSON.stringify(_0x25ca99));
+            }
+          }
+        }
+        break;
+      case "apRecompenseDrawPrize":
+        if (_0x25ca99?.["code"] === 0 && _0x25ca99?.["success"] === true) {
+          console.log("✅ 兑换红包成功");
+        } else {
+          if (_0x25ca99?.["code"] === "605") {
+            console.log("> 滑块验证,请尝试手动验证一次或者更换IP");
+            $.txhot = true;
+          } else {
+            if (_0x25ca99.errMsg) {
+              console.log("> 失败：" + _0x25ca99.errMsg);
+            } else {
+              _0x25ca99.msg ? console.log("> " + _0x25ca99.msg) : console.log("❓" + _0x3078eb + " " + JSON.stringify(_0x25ca99));
+            }
+          }
+        }
+        break;
+      case "apTaskList":
+        if (_0x25ca99.code == 0) {
+          $.apTaskList = _0x25ca99?.["data"];
+        } else {
+          _0x25ca99.code == 402 ? console.log("查询任务失败," + (_0x25ca99?.["errMsg"] || "")) : console.log("查询任务失败," + (_0x25ca99?.["errMsg"] || ""));
+        }
+        break;
+      case "apTaskDetail":
+        if (_0x25ca99.code == 0) {
+          $.apTaskDetail = _0x25ca99?.["data"];
+        } else {
+          _0x25ca99.code == 402 ? console.log("查询任务失败," + (_0x25ca99?.["errMsg"] || "")) : console.log("查询任务失败," + (_0x25ca99?.["errMsg"] || ""));
+        }
+        break;
+      case "apStartTaskTime":
+        if (!(_0x25ca99.code == 0)) {
+          _0x25ca99.code == 402 ? console.log("查询任务失败," + (_0x25ca99?.["errMsg"] || "")) : console.log("查询任务失败," + (_0x25ca99?.["errMsg"] || ""));
+        }
+        break;
+      case "apDoLimitTimeTask":
+      case "apsDoTask":
+        if (_0x25ca99.code == 0) {
+          $.finished = _0x25ca99.data.finished || false;
+          console.log("\"" + $.taskShowTitle + "\"任务完成");
+        } else {
+          _0x25ca99.code == 402 ? console.log("\"" + $.taskShowTitle + "\"完成任务失败," + (_0x25ca99?.["errMsg"] || "")) : console.log("\"" + $.taskShowTitle + "\"完成任务失败," + (_0x25ca99?.["errMsg"] || ""));
+        }
+        break;
+      case "apTaskDrawAward":
+        if (_0x25ca99.code == 0) {
+          $.prizeNum++;
+          console.log("\"" + $.taskShowTitle + "\"领取成功");
+        } else {
+          _0x25ca99.code == 402 ? console.log("\"" + $.taskShowTitle + "\"领取抽奖次数失败," + (_0x25ca99?.["errMsg"] || "")) : console.log("\"" + $.taskShowTitle + "\"领取抽奖次数失败," + (_0x25ca99?.["errMsg"] || ""));
+        }
         break;
     }
-  } catch (_0x519368) {
-    console.log("❌ 未能正确处理 " + _0x3f1926 + " 请求响应 " + (_0x519368.message || _0x519368));
+  } catch (_0x46b44f) {
+    console.log("❌ 未能正确处理 " + _0x3078eb + " 请求响应 " + (_0x46b44f.message || _0x46b44f));
   }
 }
-async function sendRequest(_0x438bd4) {
+async function sendRequest(_0x211634) {
   if ($.runEnd) {
     return;
   }
-  let _0x2ad602 = "",
-    _0x4637ca = null,
-    _0x172acb = null,
-    _0x55794d = "POST",
-    _0x92d997 = {},
-    _0x409ea8 = {};
-  switch (_0x438bd4) {
-    case "farm_home":
-      _0x409ea8 = {
-        appId: "c57f6",
-        functionId: "farm_home",
-        appid: "signed_wh5",
+  let _0x2bc54d = "",
+    _0x1c71b4 = null,
+    _0x4026b0 = null,
+    _0x1603df = "POST",
+    _0x26c4ee = {},
+    _0x4cfd05 = {};
+  switch (_0x211634) {
+    case "inviteFissionReceive":
+      _0x4cfd05 = {
+        appId: "b8469",
+        functionId: "inviteFissionReceive",
+        appid: "activities_platform",
         clientVersion: common.getLatestAppVersion(),
-        client: "apple",
+        client: "ios",
         body: {
-          version: 3
+          linkId: linkId
         },
-        version: "4.2",
+        version: "4.7",
         ua: $.UA,
         t: true
       };
-      _0x92d997 = await H5st2.getH5st(_0x409ea8);
-      _0x2ad602 = "https://api.m.jd.com/client.action";
-      _0x4637ca = _0x92d997.paramsData;
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/api";
+      _0x1c71b4 = _0x26c4ee.paramsData;
       break;
-    case "farm_assist":
-      _0x409ea8 = {
-        appId: "28981",
-        functionId: "farm_assist",
-        appid: "signed_wh5",
+    case "inviteFissionBeforeHome":
+      _0x4cfd05 = {
+        appId: "02f8d",
+        functionId: "inviteFissionBeforeHome",
+        appid: "activities_platform",
         clientVersion: common.getLatestAppVersion(),
-        client: "apple",
+        client: "ios",
         body: {
-          version: 3,
-          inviteCode: $.code,
-          shareChannel: "ttt3",
-          assistChannel: ""
+          linkId: linkId,
+          isJdApp: true,
+          inviter: ""
         },
-        version: "4.2",
+        version: "4.7",
         ua: $.UA,
         t: true
       };
-      _0x92d997 = await H5st2.getH5st(_0x409ea8);
-      _0x2ad602 = "https://api.m.jd.com/client.action";
-      _0x4637ca = _0x92d997.paramsData;
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/api";
+      _0x1c71b4 = _0x26c4ee.paramsData;
+      break;
+    case "inviteFissionHome":
+      _0x4cfd05 = {
+        appId: "eb67b",
+        functionId: "inviteFissionHome",
+        appid: "activities_platform",
+        clientVersion: common.getLatestAppVersion(),
+        client: "ios",
+        body: {
+          linkId: linkId,
+          inviter: ""
+        },
+        version: "4.7",
+        ua: $.UA,
+        t: true
+      };
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/api";
+      _0x1c71b4 = _0x26c4ee.paramsData;
+      break;
+    case "inviteFissionDrawPrize":
+      _0x4cfd05 = {
+        appId: "c02c6",
+        functionId: "inviteFissionDrawPrize",
+        appid: "activities_platform",
+        clientVersion: common.getLatestAppVersion(),
+        client: "ios",
+        body: {
+          linkId: linkId
+        },
+        version: "4.7",
+        ua: $.UA,
+        t: true
+      };
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/api";
+      _0x1c71b4 = _0x26c4ee.paramsData;
+      break;
+    case "superRedBagList":
+      _0x4cfd05 = {
+        appId: "f2b1d",
+        functionId: "superRedBagList",
+        appid: "activities_platform",
+        clientVersion: common.getLatestAppVersion(),
+        client: "ios",
+        body: {
+          pageNum: $.pageNum,
+          pageSize: 400,
+          linkId: linkId,
+          business: business
+        },
+        version: "4.7",
+        ua: $.UA,
+        t: true
+      };
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/api";
+      _0x1c71b4 = _0x26c4ee.paramsData;
+      break;
+    case "apCashWithDraw":
+      _0x4cfd05 = {
+        appId: "73bca",
+        functionId: "apCashWithDraw",
+        appid: "activities_platform",
+        clientVersion: common.getLatestAppVersion(),
+        client: "ios",
+        body: {
+          linkId: linkId,
+          businessSource: "NONE",
+          base: $.apCashWithDrawBaseParams
+        },
+        version: "4.7",
+        ua: $.UA,
+        t: true
+      };
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/api";
+      _0x1c71b4 = _0x26c4ee.paramsData;
+      break;
+    case "apRecompenseDrawPrize":
+      _0x4cfd05 = {
+        appId: "8c6ae",
+        functionId: "apRecompenseDrawPrize",
+        appid: "activities_platform",
+        clientVersion: common.getLatestAppVersion(),
+        client: "ios",
+        body: $.apRecompenseDrawPrizeBaseParams,
+        version: "4.7",
+        ua: $.UA,
+        t: true
+      };
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/api";
+      _0x1c71b4 = _0x26c4ee.paramsData;
+      break;
+    case "apTaskList":
+      _0x4cfd05 = {
+        appId: "c06b7",
+        functionId: "apTaskList",
+        appid: "activities_platform",
+        clientVersion: common.getLatestAppVersion(),
+        client: "ios",
+        body: {
+          linkId: linkId
+        },
+        version: "4.7",
+        ua: $.UA,
+        t: true
+      };
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/client.action";
+      _0x1c71b4 = _0x26c4ee.paramsData;
+      break;
+    case "apTaskDetail":
+      _0x4cfd05 = {
+        appId: "ebecc",
+        functionId: "apTaskDetail",
+        appid: "activities_platform",
+        clientVersion: common.getLatestAppVersion(),
+        client: "ios",
+        body: {
+          taskType: $.taskType,
+          taskId: $.apTaskListid,
+          channel: 4,
+          checkVersion: true,
+          linkId: linkId
+        },
+        version: "4.7",
+        ua: $.UA,
+        t: true
+      };
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/client.action";
+      _0x1c71b4 = _0x26c4ee.paramsData;
+      break;
+    case "apStartTaskTime":
+      _0x4cfd05 = {
+        appId: "ebecc",
+        functionId: "apStartTaskTime",
+        appid: "activities_platform",
+        clientVersion: common.getLatestAppVersion(),
+        client: "ios",
+        body: {
+          itemId: $.taskSourceUrl,
+          taskId: $.apTaskListid,
+          taskInsert: false,
+          channel: 4,
+          linkId: linkId
+        },
+        version: "4.7",
+        ua: $.UA,
+        t: true
+      };
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/client.action";
+      _0x1c71b4 = _0x26c4ee.paramsData;
+      break;
+    case "apDoLimitTimeTask":
+      _0x4cfd05 = {
+        appId: "ebecc",
+        functionId: "apDoLimitTimeTask",
+        appid: "activities_platform",
+        clientVersion: common.getLatestAppVersion(),
+        client: "ios",
+        body: {
+          linkId: linkId
+        },
+        version: "4.7",
+        ua: $.UA,
+        t: true
+      };
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/client.action";
+      _0x1c71b4 = _0x26c4ee.paramsData;
+      break;
+    case "apsDoTask":
+      _0x4cfd05 = {
+        appId: "54ed7",
+        functionId: "apsDoTask",
+        appid: "activities_platform",
+        clientVersion: common.getLatestAppVersion(),
+        client: "ios",
+        body: {
+          taskType: $.taskType,
+          taskId: $.apTaskListid,
+          channel: 4,
+          checkVersion: true,
+          linkId: linkId,
+          itemId: $.taskSourceUrl,
+          taskInsert: $.taskInsert
+        },
+        version: "4.7",
+        ua: $.UA,
+        t: true
+      };
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/client.action";
+      _0x1c71b4 = _0x26c4ee.paramsData;
+      break;
+    case "apTaskDrawAward":
+      _0x4cfd05 = {
+        appId: "6f2b6",
+        functionId: "apTaskDrawAward",
+        appid: "activities_platform",
+        clientVersion: common.getLatestAppVersion(),
+        client: "ios",
+        body: {
+          taskType: $.taskType,
+          taskId: $.apTaskListid,
+          channel: 4,
+          checkVersion: true,
+          linkId: linkId
+        },
+        version: "4.7",
+        ua: $.UA,
+        t: true
+      };
+      _0x26c4ee = await H5st.getH5st(_0x4cfd05);
+      _0x2bc54d = "https://api.m.jd.com/client.action";
+      _0x1c71b4 = _0x26c4ee.paramsData;
       break;
     default:
-      console.log("❌ 未知请求 " + _0x438bd4);
+      console.log("❌ 未知请求 " + _0x211634);
       return;
   }
-  const _0x55a7cc = {
-    osVersion: common.getLatestIOSVersion(),
-    rfs: "0000",
-    screen: "430*0",
-    wqDefault: "false"
-  };
-  _0x4637ca && Object.assign(_0x4637ca, _0x55a7cc);
-  _0x172acb && Object.assign(_0x172acb, _0x55a7cc);
-  const _0x450765 = {
-    url: _0x2ad602,
-    method: _0x55794d,
+  const _0x3e6647 = {};
+  _0x1c71b4 && (_0x1c71b4 = {
+    ..._0x1c71b4,
+    ..._0x3e6647
+  });
+  _0x4026b0 && (_0x4026b0 = {
+    ..._0x4026b0,
+    ..._0x3e6647
+  });
+  const _0x18e6b4 = {
+    url: _0x2bc54d,
+    method: _0x1603df,
     headers: {
       Accept: "application/json, text/plain, */*",
       "Accept-Encoding": "gzip, deflate, br",
       "Accept-Language": "zh-cn",
-      Connection: "keep-alive",
       "Content-Type": "application/x-www-form-urlencoded",
       Cookie: cookie,
-      Host: "api.m.jd.com",
-      Referer: "https://h5.m.jd.com/",
-      "X-Referer-Page": "https://h5.m.jd.com/pb/015686010/Bc9WX7MpCW7nW9QjZ5N3fFeJXMH/index.html",
-      Origin: "https://h5.m.jd.com",
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: "https://pro.m.jd.com/mall/active/3BwUqhLsJYrHP4qgAgDDJGrSVngK/index.html",
+      "X-Referer-Page": "https://pro.m.jd.com/mall/active/3BwUqhLsJYrHP4qgAgDDJGrSVngK/index.html",
+      Origin: "https://pro.m.jd.com",
       "x-rp-client": "h5_1.0.0",
       "User-Agent": $.UA
     },
-    params: _0x172acb,
-    data: _0x4637ca,
-    timeout: 30000
+    params: _0x4026b0,
+    data: _0x1c71b4,
+    timeout: 15000,
+    httpsTlsOptions: ["superRedBagList"].includes(_0x211634) ? common.useAppTls() : null
   };
-  _0x55794d === "GET" && (delete _0x450765.data, delete _0x450765.headers["Content-Type"]);
-  const _0x5905aa = 1;
-  let _0x3d657f = 0,
-    _0x47d3fa = null,
-    _0x2e036e = false;
-  while (_0x3d657f < _0x5905aa) {
-    _0x3d657f > 0 && (await $.wait(1000));
-    const _0x241ddb = await common.request(_0x450765);
-    if (!_0x241ddb.success) {
-      _0x47d3fa = "🚫 " + _0x438bd4 + " 请求失败 ➜ " + _0x241ddb.error;
-      _0x3d657f++;
+  _0x1603df === "GET" && (delete _0x18e6b4.data, delete _0x18e6b4.headers["Content-Type"]);
+  !_0x4026b0 && delete _0x18e6b4.params;
+  const _0x473552 = 1;
+  let _0x2134b4 = 0,
+    _0x5c8884 = null,
+    _0x150053 = false;
+  while (_0x2134b4 < _0x473552) {
+    _0x2134b4 > 0 && (await $.wait(1000));
+    const _0x519469 = await common.request(_0x18e6b4);
+    if (!_0x519469.success) {
+      _0x5c8884 = "🚫 " + _0x211634 + " 请求失败 ➜ " + _0x519469.error;
+      _0x2134b4++;
       continue;
     }
-    if (!_0x241ddb.data) {
-      _0x47d3fa = "🚫 " + _0x438bd4 + " 请求失败 ➜ 无响应数据";
-      _0x3d657f++;
+    if (!_0x519469?.["data"]) {
+      _0x5c8884 = "🚫 " + _0x211634 + " 请求失败 ➜ 无响应数据";
+      _0x2134b4++;
       continue;
     }
-    await handleResponse(_0x438bd4, _0x241ddb.data);
-    _0x2e036e = false;
+    handleResponse(_0x211634, _0x519469.data);
+    _0x150053 = false;
     break;
   }
-  _0x3d657f >= _0x5905aa && (console.log(_0x47d3fa), _0x2e036e && ($.outFlag = true, $.message && $.message.fix(_0x47d3fa)));
+  _0x2134b4 >= _0x473552 && (console.log(_0x5c8884), _0x150053 && ($.outFlag = true, $.message && $.message.fix(_0x5c8884)));
 }
-class H5st42 {
-  constructor() {
-    this._algoKey = CryptoJS.enc.Utf8.parse("wm0!@w-s#ll1flo(");
-    this._ivKey = CryptoJS.enc.Utf8.parse("0102030405060708");
-    this._tokenMaps = {
-      4.2: {}
-    };
-    this._algoMaps = {
-      4.2: {}
-    };
-    this._fpMaps = new Map();
-    this._latestAppVersionData = {
-      build: common.getLatestAppBuildVersion(),
-      version: common.getLatestAppVersion()
-    };
-    this._latestIOSVersion = common.getLatestIOSVersion();
-  }
-  async getH5st(_0x184c3d) {
-    let _0x115df2 = Object.assign({}, _0x184c3d, {
-      h5st: "",
-      params: "",
-      paramsData: {}
-    });
-    try {
-      if (!(typeof _0x184c3d === "object" && _0x184c3d !== null)) {
-        console.log("❌ getH5st 传入参数有误");
-        return _0x115df2;
-      } else {
-        const _0x1739b1 = ["appId", "appid", "body", "functionId"],
-          _0xe8c052 = _0x1739b1.filter(_0xbd04e1 => !_0x184c3d[_0xbd04e1]);
-        if (_0xe8c052.length > 0) {
-          console.log("❌ getH5st 传入参数有误，缺少必要参数：" + _0xe8c052.join(", "));
-          return _0x115df2;
-        }
-      }
-      _0x184c3d.version = "4.2";
-      const _0x181ca4 = this._initParams(_0x184c3d),
-        {
-          appid: _0x27d581,
-          body: _0x23a65f,
-          client: _0x298d80,
-          clientVersion: _0x23b38d,
-          functionId: _0x5daa0e
-        } = _0x184c3d;
-      let _0x134060 = this._tokenMaps[_0x181ca4.version][_0x181ca4.appId],
-        _0x2f25c2 = this._algoMaps[_0x181ca4.version][_0x181ca4.appId];
-      if (!_0x134060 || !_0x2f25c2) {
-        const _0x5475c6 = await this._requestAlgo(_0x181ca4);
-        _0x134060 = _0x5475c6.token;
-        _0x2f25c2 = _0x5475c6.algo;
-        this._tokenMaps[_0x181ca4.version][_0x181ca4.appId] = _0x134060;
-        this._algoMaps[_0x181ca4.version][_0x181ca4.appId] = _0x2f25c2;
-      }
-      if (!_0x134060 && !_0x2f25c2) {
-        return _0x115df2;
-      }
-      const _0x1f3b3b = {
-        appid: _0x27d581,
-        body: _0x23a65f,
-        client: _0x298d80,
-        clientVersion: _0x23b38d,
-        functionId: _0x5daa0e,
-        t: _0x184c3d.t
-      };
-      _0x184c3d?.["t"] && typeof _0x184c3d.t === "boolean" ? _0x184c3d.t = Date.now() : _0x184c3d.t = "";
-      if (!_0x1f3b3b.client) {
-        delete _0x1f3b3b.client;
-      }
-      if (!_0x1f3b3b.clientVersion) {
-        delete _0x1f3b3b.clientVersion;
-      }
-      const _0xe8fd3e = this._makeSign(_0x1f3b3b, _0x134060, _0x2f25c2, _0x181ca4),
-        _0x56adb5 = {
-          functionId: _0x5daa0e,
-          body: JSON.stringify(_0x23a65f),
-          t: "",
-          appid: _0x27d581,
-          client: "",
-          clientVersion: "",
-          h5st: _0xe8fd3e?.["h5st"] || ""
-        };
-      for (const _0x499d9a of ["t", "client", "clientVersion"]) {
-        _0x184c3d[_0x499d9a] ? _0x56adb5[_0x499d9a] = _0x184c3d[_0x499d9a] : delete _0x56adb5[_0x499d9a];
-      }
-      Object.assign(_0x115df2, {
-        h5st: _0xe8fd3e?.["h5st"] || "",
-        params: querystring.stringify(_0x56adb5),
-        paramsData: _0x56adb5
+function toDecimal(_0x17e3c0) {
+  var _0x8f10cd = Number(_0x17e3c0);
+  !isNaN(parseFloat(_0x8f10cd)) && (_0x8f10cd = _0x8f10cd.toFixed(2));
+  return _0x8f10cd;
+}
+function Env(t, e) {
+  "undefined" != typeof process && JSON.stringify(process.env).indexOf("GITHUB") > -1 && process.exit(0);
+  class s {
+    constructor(t) {
+      this.env = t;
+    }
+    send(t, e = "GET") {
+      t = "string" == typeof t ? {
+        url: t
+      } : t;
+      let s = this.get;
+      "POST" === e && (s = this.post);
+      return new Promise((e, i) => {
+        s.call(this, t, (t, s, r) => {
+          t ? i(t) : e(s);
+        });
       });
-    } catch (_0x4176f9) {
-      console.log("❌ getH5st 遇到了错误 " + (_0x4176f9.message || _0x4176f9));
     }
-    return _0x115df2;
+    get(t) {
+      return this.send.call(this.env, t);
+    }
+    post(t) {
+      return this.send.call(this.env, t, "POST");
+    }
   }
-  _initParams(_0x4743b5) {
-    const _0x1753d4 = {
-      version: "",
-      appId: _0x4743b5?.["appId"] || "",
-      fv: "",
-      fp: "",
-      ua: "",
-      sua: "",
-      av: "",
-      url: "",
-      og: "",
-      referer: _0x4743b5?.["referer"] || "",
-      pin: _0x4743b5?.["pin"] || "",
-      cookie: _0x4743b5?.["cookie"] || ""
-    };
-    if (_0x4743b5?.["ua"]) {
-      let _0x75a30d = _0x4743b5.ua,
-        _0x2441bc = _0x75a30d.match(/^[\s\S]*?\(([\s\S]*?)\)/),
-        _0x3aa6ca = _0x75a30d.match(/(?<=\/)[0-9]\.0[^'"\n]+/g);
-      _0x2441bc?.["length"] > 0 && _0x3aa6ca?.["length"] > 0 && (_0x1753d4.ua = _0x75a30d, _0x1753d4.sua = _0x2441bc[1], _0x1753d4.av = _0x3aa6ca[0]);
+  return new class {
+    constructor(t, e) {
+      this.name = t;
+      this.http = new s(this);
+      this.data = null;
+      this.dataFile = "box.dat";
+      this.logs = [];
+      this.isMute = !1;
+      this.isNeedRewrite = !1;
+      this.logSeparator = "\n";
+      this.startTime = new Date().getTime();
+      Object.assign(this, e);
+      this.log("", `🔔${this.name}, 开始!`);
     }
-    if (!_0x1753d4.ua) {
-      let _0x593724 = this._genUA(),
-        _0x11cc9a = _0x593724.match(/^[\s\S]*?\(([\s\S]*?)\)/),
-        _0x594367 = _0x593724.match(/(?<=\/)[0-9]\.0[^'"\n]+/g);
-      _0x11cc9a?.["length"] > 0 && _0x594367?.["length"] > 0 && (_0x1753d4.ua = _0x593724, _0x1753d4.sua = _0x11cc9a[1], _0x1753d4.av = _0x594367[0]);
+    isNode() {
+      return "undefined" != typeof module && !!module.exports;
     }
-    _0x1753d4.version = "4.2";
-    _0x1753d4.fv = "h5_npm_v4.2.0";
-    _0x1753d4.fp = this._fpMaps.get(_0x1753d4.ua) || "";
-    !_0x1753d4.fp && (_0x1753d4.fp = this._makeFp(), _0x1753d4.ua.startsWith("jd") && this._fpMaps.set(_0x1753d4.ua, _0x1753d4.fp));
-    if (_0x4743b5?.["url"]) {
+    isQuanX() {
+      return "undefined" != typeof $task;
+    }
+    isSurge() {
+      return "undefined" != typeof $httpClient && "undefined" == typeof $loon;
+    }
+    isLoon() {
+      return "undefined" != typeof $loon;
+    }
+    toObj(t, e = null) {
       try {
-        const _0x22f0a7 = new URL(_0x4743b5.url);
-        _0x1753d4.url = _0x22f0a7.href;
-        _0x1753d4.og = _0x22f0a7.origin;
-      } catch {}
+        return JSON.parse(t);
+      } catch {
+        return e;
+      }
     }
-    return _0x1753d4;
-  }
-  async _requestAlgo(_0x40dbb4) {
-    try {
-      const _0x38aadb = this._getExpandParamsData(_0x40dbb4);
-      let _0x54ef40 = this._AESEncrypt(JSON.stringify(_0x38aadb, null, 2), this._algoKey);
-      const _0x6feb3d = {
-          version: _0x40dbb4.version,
-          fp: _0x40dbb4.fp,
-          appId: _0x40dbb4.appId,
-          timestamp: Date.now(),
-          platform: "web",
-          expandParams: _0x54ef40,
-          fv: _0x40dbb4.fv
-        },
-        _0x45da99 = {
-          url: "https://cactus.jd.com/request_algo?g_ty=ajax",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json;charset=utf-8",
-            Origin: "https://cactus.jd.com",
-            Host: "cactus.jd.com",
-            Accept: "*/*",
-            "User-Agent": _0x40dbb4?.["ua"] || "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/122.0.0.0"
-          },
-          data: _0x6feb3d,
-          proxy: null,
-          timeout: 60000,
-          debug: false
-        };
-      let _0xb98a62 = 0,
-        _0x55195d = null;
-      const _0x3b2f64 = 1;
-      while (_0xb98a62 < _0x3b2f64) {
-        const _0x48b58e = await common.request(_0x45da99);
-        if (!_0x48b58e.success) {
-          _0x55195d = "❌ getH5st request_algo 请求失败 ➜ " + _0x48b58e.error;
-          _0xb98a62++;
-          continue;
-        }
-        if (!_0x48b58e.data) {
-          _0x55195d = "🚫 getH5st request_algo 请求失败 ➜ 无响应数据";
-          _0xb98a62++;
-          continue;
-        }
+    toStr(t, e = null) {
+      try {
+        return JSON.stringify(t);
+      } catch {
+        return e;
+      }
+    }
+    getjson(t, e) {
+      let s = e;
+      const i = this.getdata(t);
+      if (i) {
         try {
-          const _0x4b3642 = _0x48b58e.data;
-          if (_0x4b3642?.["data"] && _0x4b3642?.["data"]?.["result"]) {
-            const _0x2f55df = _0x4b3642.data.result?.["algo"],
-              _0x9a5c96 = _0x4b3642.data.result?.["tk"];
-            if (_0x2f55df && _0x9a5c96) {
-              return {
-                token: _0x9a5c96,
-                algo: _0x2f55df
-              };
-            }
-          }
-          _0x55195d = "🚫 getH5st request_algo 请求异常 ➜ " + JSON.stringify(_0x4b3642);
-        } catch (_0x39f78f) {
-          _0x55195d = "❌ getH5st request_algo 在处理接口响应时遇到了错误 ➜ " + (_0x39f78f.message || _0x39f78f);
-        }
-        _0xb98a62++;
+          s = JSON.parse(this.getdata(t));
+        } catch {}
       }
-      _0xb98a62 >= _0x3b2f64 && console.log(_0x55195d);
-    } catch (_0x4bc85a) {
-      console.log("❌ getH5st request_algo 在处理API请求时遇到了错误 " + (_0x4bc85a.message || _0x4bc85a));
+      return s;
     }
-    return {
-      token: "",
-      algo: ""
-    };
-  }
-  _getExpandParamsData(_0x1e52a1) {
-    return {
-      wc: 0,
-      wd: 0,
-      l: "zh-CN",
-      ls: "zh-CN,zh",
-      ml: 0,
-      pl: 0,
-      av: _0x1e52a1.av,
-      ua: _0x1e52a1.ua,
-      sua: _0x1e52a1.sua,
-      pp: _0x1e52a1.pin ? {
-        p1: _0x1e52a1.pin,
-        p2: _0x1e52a1.pin
-      } : {},
-      extend: {
-        pm: 0,
-        wd: 0,
-        l: 0,
-        ls: 2,
-        wk: 0,
-        bu1: "9.9.9"
-      },
-      pp1: _0x1e52a1.pin ? "" : _0x1e52a1.cookie,
-      pm: {
-        ps: "prompt",
-        np: "default"
-      },
-      w: 400,
-      h: 700,
-      ow: 400,
-      oh: 700,
-      url: _0x1e52a1.url,
-      og: _0x1e52a1.og,
-      pr: 1.25,
-      re: _0x1e52a1.referer,
-      random: this._makeRandomStr(10),
-      referer: _0x1e52a1.referer,
-      v: _0x1e52a1.fv,
-      ai: _0x1e52a1.appId,
-      fp: _0x1e52a1.fp
-    };
-  }
-  _makeSign(_0x5e43e4, _0x1d6272, _0x5682a1, _0x4159cb) {
-    try {
-      const _0x2f3c96 = _0x4159cb.version,
-        _0x317ffa = Date.now(),
-        _0x2b387f = new Date(_0x317ffa),
-        _0x254444 = "" + _0x2b387f.getFullYear() + String(_0x2b387f.getMonth() + 1).padStart(2, "0") + String(_0x2b387f.getDate()).padStart(2, "0") + String(_0x2b387f.getHours()).padStart(2, "0") + String(_0x2b387f.getMinutes()).padStart(2, "0") + String(_0x2b387f.getSeconds()).padStart(2, "0") + String(_0x2b387f.getMilliseconds()).padStart(3, "0");
-      let _0x313a2d = Object.entries(_0x5e43e4).map(([_0x371f7c, _0x2ccdb8]) => {
-          _0x371f7c === "body" && (_0x2ccdb8 = CryptoJS.SHA256(JSON.stringify(_0x2ccdb8)).toString());
-          return {
-            key: _0x371f7c,
-            value: _0x2ccdb8
-          };
-        }),
-        _0xb6a128 = "",
-        _0x148a18 = "";
-      const _0x561280 = _0x313a2d.map(_0x57ef54 => _0x57ef54.key + ":" + _0x57ef54.value).join("&"),
-        _0x182dce = new Function("return ".concat(_0x5682a1))();
-      let _0x588915 = _0x254444;
-      _0x588915 += "74";
-      let _0x2f1f0b;
-      _0x2f1f0b = _0x182dce(_0x1d6272, _0x4159cb.fp, _0x588915, _0x4159cb.appId, CryptoJS).toString() || "";
-      _0xb6a128 = CryptoJS.SHA256("".concat(_0x2f1f0b).concat(_0x561280).concat(_0x2f1f0b)).toString();
-      let _0x36a882 = {};
-      _0x36a882 = {
-        sua: _0x4159cb.sua,
-        pp: _0x4159cb.pin ? {
-          p1: _0x4159cb.pin,
-          p2: _0x4159cb.pin
-        } : {},
-        extend: {
-          pm: 0,
-          wd: 0,
-          l: 0,
-          ls: 2,
-          wk: 0,
-          bu1: "9.9.9"
-        },
-        random: this._makeRandomStr(10),
-        referer: _0x4159cb.referer,
-        v: _0x4159cb.fv,
-        fp: _0x4159cb.fp
-      };
-      _0x148a18 = this._AESEncrypt(JSON.stringify(_0x36a882, null, 2), CryptoJS.enc.Utf8.parse("DNiHi703B0&17hh1"));
-      const _0x2ad874 = ["".concat(_0x254444), "".concat(_0x4159cb.fp), "".concat(_0x4159cb.appId), "".concat(_0x1d6272), "".concat(_0xb6a128), "".concat(_0x2f3c96), "".concat(_0x317ffa), "".concat(_0x148a18)].join(";");
-      return {
-        _stk: _0x313a2d.map(_0x4141c7 => _0x4141c7.key).join(","),
-        _ste: 1,
-        h5st: _0x2ad874
-      };
-    } catch (_0x5c5c7c) {
-      console.log("❌ getH5st 生成签名时遇到了错误 " + (_0x5c5c7c.message || _0x5c5c7c));
+    setjson(t, e) {
+      try {
+        return this.setdata(JSON.stringify(t), e);
+      } catch {
+        return !1;
+      }
     }
-    return {
-      _stk: "",
-      _ste: 0,
-      h5st: ""
-    };
-  }
-  _AESEncrypt(_0x2f7af4, _0x563b02) {
-    const _0xb99bc4 = CryptoJS.enc.Utf8.parse(_0x2f7af4),
-      _0xc122e0 = CryptoJS.AES.encrypt(_0xb99bc4, _0x563b02, {
-        iv: this._ivKey,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
+    getScript(t) {
+      return new Promise(e => {
+        this.get({
+          url: t
+        }, (t, s, i) => e(i));
       });
-    return CryptoJS.enc.Hex.stringify(CryptoJS.enc.Base64.parse(_0xc122e0.toString()));
-  }
-  _makeRandomStr(_0x33a875 = 32, _0x21e176 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-") {
-    const _0xec8d51 = _0x21e176.length;
-    let _0x69df9c = "";
-    for (let _0x49c8d4 = 0; _0x49c8d4 < _0x33a875; _0x49c8d4++) {
-      _0x69df9c += _0x21e176.charAt(Math.floor(Math.random() * _0xec8d51));
     }
-    return _0x69df9c;
-  }
-  _genUA() {
-    function _0x4155ec(_0x527fc9 = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", _0x44b93c = "0123456789abcdef") {
-      let _0x5e939a = "";
-      for (let _0x5f3add of _0x527fc9) {
-        if (_0x5f3add == "x") {
-          _0x5e939a += _0x44b93c.charAt(Math.floor(Math.random() * _0x44b93c.length));
+    runScript(t, e) {
+      return new Promise(s => {
+        let i = this.getdata("@chavy_boxjs_userCfgs.httpapi");
+        i = i ? i.replace(/\n/g, "").trim() : i;
+        let r = this.getdata("@chavy_boxjs_userCfgs.httpapi_timeout");
+        r = r ? 1 * r : 20;
+        r = e && e.timeout ? e.timeout : r;
+        const [o, h] = i.split("@"),
+          n = {
+            url: `http://${h}/v1/scripting/evaluate`,
+            body: {
+              script_text: t,
+              mock_type: "cron",
+              timeout: r
+            },
+            headers: {
+              "X-Key": o,
+              Accept: "*/*"
+            }
+          };
+        this.post(n, (t, e, i) => s(i));
+      }).catch(t => this.logErr(t));
+    }
+    loaddata() {
+      if (!this.isNode()) {
+        return {};
+      }
+      {
+        this.fs = this.fs ? this.fs : require("fs");
+        this.path = this.path ? this.path : require("path");
+        const t = this.path.resolve(this.dataFile),
+          e = this.path.resolve(process.cwd(), this.dataFile),
+          s = this.fs.existsSync(t),
+          i = !s && this.fs.existsSync(e);
+        if (!s && !i) {
+          return {};
+        }
+        {
+          const i = s ? t : e;
+          try {
+            return JSON.parse(this.fs.readFileSync(i));
+          } catch (t) {
+            return {};
+          }
+        }
+      }
+    }
+    writedata() {
+      if (this.isNode()) {
+        this.fs = this.fs ? this.fs : require("fs");
+        this.path = this.path ? this.path : require("path");
+        const t = this.path.resolve(this.dataFile),
+          e = this.path.resolve(process.cwd(), this.dataFile),
+          s = this.fs.existsSync(t),
+          i = !s && this.fs.existsSync(e),
+          r = JSON.stringify(this.data);
+        s ? this.fs.writeFileSync(t, r) : i ? this.fs.writeFileSync(e, r) : this.fs.writeFileSync(t, r);
+      }
+    }
+    lodash_get(t, e, s) {
+      const i = e.replace(/\[(\d+)\]/g, ".$1").split(".");
+      let r = t;
+      for (const t of i) if (r = Object(r)[t], void 0 === r) {
+        return s;
+      }
+      return r;
+    }
+    lodash_set(t, e, s) {
+      return Object(t) !== t ? t : (Array.isArray(e) || (e = e.toString().match(/[^.[\]]+/g) || []), e.slice(0, -1).reduce((t, s, i) => Object(t[s]) === t[s] ? t[s] : t[s] = Math.abs(e[i + 1]) >> 0 == +e[i + 1] ? [] : {}, t)[e[e.length - 1]] = s, t);
+    }
+    getdata(t) {
+      let e = this.getval(t);
+      if (/^@/.test(t)) {
+        const [, s, i] = /^@(.*?)\.(.*?)$/.exec(t),
+          r = s ? this.getval(s) : "";
+        if (r) {
+          try {
+            const t = JSON.parse(r);
+            e = t ? this.lodash_get(t, i, "") : e;
+          } catch (t) {
+            e = "";
+          }
+        }
+      }
+      return e;
+    }
+    setdata(t, e) {
+      let s = !1;
+      if (/^@/.test(e)) {
+        const [, i, r] = /^@(.*?)\.(.*?)$/.exec(e),
+          o = this.getval(i),
+          h = i ? "null" === o ? null : o || "{}" : "{}";
+        try {
+          const e = JSON.parse(h);
+          this.lodash_set(e, r, t);
+          s = this.setval(JSON.stringify(e), i);
+        } catch (e) {
+          const o = {};
+          this.lodash_set(o, r, t);
+          s = this.setval(JSON.stringify(o), i);
+        }
+      } else {
+        s = this.setval(t, e);
+      }
+      return s;
+    }
+    getval(t) {
+      return this.isSurge() || this.isLoon() ? $persistentStore.read(t) : this.isQuanX() ? $prefs.valueForKey(t) : this.isNode() ? (this.data = this.loaddata(), this.data[t]) : this.data && this.data[t] || null;
+    }
+    setval(t, e) {
+      return this.isSurge() || this.isLoon() ? $persistentStore.write(t, e) : this.isQuanX() ? $prefs.setValueForKey(t, e) : this.isNode() ? (this.data = this.loaddata(), this.data[e] = t, this.writedata(), !0) : this.data && this.data[e] || null;
+    }
+    initGotEnv(t) {
+      this.got = this.got ? this.got : require("got");
+      this.cktough = this.cktough ? this.cktough : require("tough-cookie");
+      this.ckjar = this.ckjar ? this.ckjar : new this.cktough.CookieJar();
+      t && (t.headers = t.headers ? t.headers : {}, void 0 === t.headers.Cookie && void 0 === t.cookieJar && (t.cookieJar = this.ckjar));
+    }
+    get(t, e = () => {}) {
+      t.headers && (delete t.headers["Content-Type"], delete t.headers["Content-Length"]);
+      this.isSurge() || this.isLoon() ? (this.isSurge() && this.isNeedRewrite && (t.headers = t.headers || {}, Object.assign(t.headers, {
+        "X-Surge-Skip-Scripting": !1
+      })), $httpClient.get(t, (t, s, i) => {
+        !t && s && (s.body = i, s.statusCode = s.status);
+        e(t, s, i);
+      })) : this.isQuanX() ? (this.isNeedRewrite && (t.opts = t.opts || {}, Object.assign(t.opts, {
+        hints: !1
+      })), $task.fetch(t).then(t => {
+        const {
+          statusCode: s,
+          statusCode: i,
+          headers: r,
+          body: o
+        } = t;
+        e(null, {
+          status: s,
+          statusCode: i,
+          headers: r,
+          body: o
+        }, o);
+      }, t => e(t))) : this.isNode() && (this.initGotEnv(t), this.got(t).on("redirect", (t, e) => {
+        try {
+          if (t.headers["set-cookie"]) {
+            const s = t.headers["set-cookie"].map(this.cktough.Cookie.parse).toString();
+            s && this.ckjar.setCookieSync(s, null);
+            e.cookieJar = this.ckjar;
+          }
+        } catch (t) {
+          this.logErr(t);
+        }
+      }).then(t => {
+        const {
+          statusCode: s,
+          statusCode: i,
+          headers: r,
+          body: o
+        } = t;
+        e(null, {
+          status: s,
+          statusCode: i,
+          headers: r,
+          body: o
+        }, o);
+      }, t => {
+        const {
+          message: s,
+          response: i
+        } = t;
+        e(s, i, i && i.body);
+      }));
+    }
+    post(t, e = () => {}) {
+      if (t.body && t.headers && !t.headers["Content-Type"] && (t.headers["Content-Type"] = "application/x-www-form-urlencoded"), t.headers && delete t.headers["Content-Length"], this.isSurge() || this.isLoon()) {
+        this.isSurge() && this.isNeedRewrite && (t.headers = t.headers || {}, Object.assign(t.headers, {
+          "X-Surge-Skip-Scripting": !1
+        }));
+        $httpClient.post(t, (t, s, i) => {
+          !t && s && (s.body = i, s.statusCode = s.status);
+          e(t, s, i);
+        });
+      } else {
+        if (this.isQuanX()) {
+          t.method = "POST";
+          this.isNeedRewrite && (t.opts = t.opts || {}, Object.assign(t.opts, {
+            hints: !1
+          }));
+          $task.fetch(t).then(t => {
+            const {
+              statusCode: s,
+              statusCode: i,
+              headers: r,
+              body: o
+            } = t;
+            e(null, {
+              status: s,
+              statusCode: i,
+              headers: r,
+              body: o
+            }, o);
+          }, t => e(t));
         } else {
-          _0x5f3add == "X" ? _0x5e939a += _0x44b93c.charAt(Math.floor(Math.random() * _0x44b93c.length)).toUpperCase() : _0x5e939a += _0x5f3add;
+          if (this.isNode()) {
+            this.initGotEnv(t);
+            const {
+              url: s,
+              ...i
+            } = t;
+            this.got.post(s, i).then(t => {
+              const {
+                statusCode: s,
+                statusCode: i,
+                headers: r,
+                body: o
+              } = t;
+              e(null, {
+                status: s,
+                statusCode: i,
+                headers: r,
+                body: o
+              }, o);
+            }, t => {
+              const {
+                message: s,
+                response: i
+              } = t;
+              e(s, i, i && i.body);
+            });
+          }
         }
       }
-      return _0x5e939a;
     }
-    const _0x133f37 = _0x4155ec(),
-      _0x5f2939 = ["jdapp", "iPhone", this._latestAppVersionData.version, "", "rn/" + _0x133f37, "M/5.0", "appBuild/" + this._latestAppVersionData.build, "jdSupportDarkMode/0", "ef/1", "ep/%7B%22ciphertype%22%3A5%2C%22cipher%22%3A%7B%22ud%22%3A%22DG%3D%3D%22%2C%22sv%22%3A%22CG%3D%3D%22%2C%22iad%22%3A%22%22%7D%2C%22ts%22%3A" + Math.floor(Date.now() / 1000) + "%2C%22hdid%22%3A%22JM9F1ywUPwflvMIpYPok0tt5k9kW4ArJEU3lfLhxBqw%3D%22%2C%22version%22%3A%221.0.3%22%2C%22appname%22%3A%22com.360buy.jdmobile%22%2C%22ridx%22%3A-1%7D", "Mozilla/5.0 (iPhone; CPU iPhone OS " + this._latestIOSVersion.replace(".", "_") + " like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148", "supportJDSHWK/1", ""],
-      _0x4b5f20 = _0x5f2939.join(";");
-    return _0x4b5f20;
-  }
-  _makeFp() {
-    function _0x3b5020(_0x3c567a, _0x1afbd5) {
-      return _0x3c567a + Math.floor(Math.random() * (_0x1afbd5 + 1 - _0x3c567a));
-    }
-    function _0x324827(_0x4acdd2, _0x5b8935) {
-      for (var _0x419545 = [], _0x194754 = 0; _0x194754 < _0x4acdd2.length; _0x194754++) {
-        var _0x3f3174 = _0x4acdd2[_0x194754];
-        if (_0x3b5020(0, _0x4acdd2.length - _0x194754 - 1) < _0x5b8935 - _0x419545.length && (_0x419545.push(_0x3f3174), _0x419545.length == _0x5b8935)) {
-          break;
-        }
-      }
-      for (var _0x1eb34d = "", _0x22e102 = 0; _0x22e102 < _0x419545.length; _0x22e102 += 1) {
-        var _0x356e9f = Math.random() * (_0x419545.length - _0x22e102) | 0;
-        _0x1eb34d += _0x419545[_0x356e9f];
-        _0x419545[_0x356e9f] = _0x419545[_0x419545.length - _0x22e102 - 1];
-      }
-      return _0x1eb34d;
-    }
-    function _0x186586(_0x7a582c, _0x17d907) {
-      for (var _0x51c610 = 0; _0x51c610 < _0x17d907.length; _0x51c610 += 1) {
-        var _0x17900a = _0x7a582c.indexOf(_0x17d907[_0x51c610]);
-        -1 !== _0x17900a && (_0x7a582c = _0x7a582c.replace(_0x17d907[_0x51c610], ""));
-      }
-      return _0x7a582c;
-    }
-    var _0x3fe167 = "6d0jhqw3pa",
-      _0x4a932d = _0x324827(_0x3fe167, 4),
-      _0x4bdb0f = _0x3b5020(0, 9),
-      _0x47a128 = _0x186586(_0x3fe167, _0x4a932d),
-      _0x585f45 = {
-        size: _0x4bdb0f,
-        num: _0x47a128
+    time(t, e = null) {
+      const s = e ? new Date(e) : new Date();
+      let i = {
+        "M+": s.getMonth() + 1,
+        "d+": s.getDate(),
+        "H+": s.getHours(),
+        "m+": s.getMinutes(),
+        "s+": s.getSeconds(),
+        "q+": Math.floor((s.getMonth() + 3) / 3),
+        S: s.getMilliseconds()
       };
-    var _0x3b5020 = this._makeRandomStr(_0x585f45.size, _0x585f45.num) + _0x4a932d + this._makeRandomStr(12 - _0x4bdb0f - 1, _0x47a128) + _0x4bdb0f,
-      _0xc29941 = _0x3b5020.split(""),
-      _0x1c1ae4 = _0xc29941.slice(0, 14),
-      _0x449bc3 = _0xc29941.slice(14),
-      _0x397ff7 = [];
-    while (_0x1c1ae4.length > 0) {
-      _0x397ff7.push((35 - parseInt(_0x1c1ae4.pop(), 36)).toString(36));
+      /(y+)/.test(t) && (t = t.replace(RegExp.$1, (s.getFullYear() + "").substr(4 - RegExp.$1.length)));
+      for (let e in i) new RegExp("(" + e + ")").test(t) && (t = t.replace(RegExp.$1, 1 == RegExp.$1.length ? i[e] : ("00" + i[e]).substr(("" + i[e]).length)));
+      return t;
     }
-    _0x397ff7 = _0x397ff7.concat(_0x449bc3);
-    return _0x397ff7.join("");
-  }
+    msg(e = t, s = "", i = "", r) {
+      const o = t => {
+        if (!t) {
+          return t;
+        }
+        if ("string" == typeof t) {
+          return this.isLoon() ? t : this.isQuanX() ? {
+            "open-url": t
+          } : this.isSurge() ? {
+            url: t
+          } : void 0;
+        }
+        if ("object" == typeof t) {
+          if (this.isLoon()) {
+            let e = t.openUrl || t.url || t["open-url"],
+              s = t.mediaUrl || t["media-url"];
+            return {
+              openUrl: e,
+              mediaUrl: s
+            };
+          }
+          if (this.isQuanX()) {
+            let e = t["open-url"] || t.url || t.openUrl,
+              s = t["media-url"] || t.mediaUrl;
+            return {
+              "open-url": e,
+              "media-url": s
+            };
+          }
+          if (this.isSurge()) {
+            let e = t.url || t.openUrl || t["open-url"];
+            return {
+              url: e
+            };
+          }
+        }
+      };
+      if (this.isMute || (this.isSurge() || this.isLoon() ? $notification.post(e, s, i, o(r)) : this.isQuanX() && $notify(e, s, i, o(r))), !this.isMuteLog) {
+        let t = ["", "==============📣系统通知📣=============="];
+        t.push(e);
+        s && t.push(s);
+        i && t.push(i);
+        console.log(t.join("\n"));
+        this.logs = this.logs.concat(t);
+      }
+    }
+    log(...t) {
+      t.length > 0 && (this.logs = [...this.logs, ...t]);
+      console.log(t.join(this.logSeparator));
+    }
+    logErr(t, e) {
+      const s = !this.isSurge() && !this.isQuanX() && !this.isLoon();
+      s ? this.log("", `❗️${this.name}, 错误!`, t.stack) : this.log("", `❗️${this.name}, 错误!`, t);
+    }
+    wait(t) {
+      return new Promise(e => setTimeout(e, t));
+    }
+    done(t = {}) {
+      const e = new Date().getTime(),
+        s = (e - this.startTime) / 1000;
+      this.log("", `🔔${this.name}, 结束! 🕛 ${s} 秒`);
+      this.log();
+      (this.isSurge() || this.isQuanX() || this.isLoon()) && $done(t);
+    }
+  }(t, e);
 }
-const H5st2 = new H5st42();
