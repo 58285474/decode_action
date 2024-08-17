@@ -1,3 +1,6 @@
+//Sat Aug 17 2024 12:52:40 GMT+0000 (Coordinated Universal Time)
+//Base:https://github.com/echo094/decode-js
+//Modify:https://github.com/smallfawn/decode_action
 //Sat Aug 17 2024 12:50:00 GMT+0000 (Coordinated Universal Time)
 //Base:https://github.com/echo094/decode-js
 //Modify:https://github.com/smallfawn/decode_action
@@ -1209,7 +1212,7 @@ async function QR2Lu1(q7xAYA, eYEDOu) {
     const vr3FBN6 = {
       [hFri7q(284)]: r5yUwS,
       [nFEG2Ve(285) + nFEG2Ve(286)]: 2,
-      _: HzMPCG(new (jLz1lW(992))()[nFEG2Ve(bQ4Z9n(147))]() + new (jLz1lW(bQ4Z9n(127)))()[hFri7q(288)]() * 60 * 1000, 480 * 60 * Oad1EZ(122), JBLKRz(-Oad1EZ(-8))),
+      _: HzMPCG(new (jLz1lW(992))()[nFEG2Ve(bQ4Z9n(147))]() + new (jLz1lW(bQ4Z9n(127)))()[hFri7q(288)]() * 60 * 1000, 28800 * Oad1EZ(122), JBLKRz(-Oad1EZ(-8))),
       [nFEG2Ve(289)]: hFri7q[bQ4Z9n(15)](void 0, 290),
       [nFEG2Ve(291)]: GcMnDz[nFEG2Ve[bQ4Z9n(15)](Oad1EZ(-19), 292) + hFri7q(293) + hFri7q(275) + "n"]()
     };
